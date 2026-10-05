@@ -18,6 +18,25 @@ const STORAGE_KEYS = {
   LEVEL_PROGRESS: 'eduland_level_progress',
 };
 
+const safeStorage = {
+  get: (key: string): string | null => {
+    try {
+      if (typeof window === 'undefined') return null;
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set: (key: string, value: string): void => {
+    try {
+      if (typeof window === 'undefined') return;
+      localStorage.setItem(key, value);
+    } catch {
+      // Storage restricted in private/incognito mode
+    }
+  },
+};
+
 export default function App() {
   // Game View State
   const [currentView, setCurrentView] = useState<'VILLAGE' | 'PLAYING'>('VILLAGE');
@@ -46,18 +65,29 @@ export default function App() {
 
   // Persistent Game State (Banked Books, Village Buildings, Level Progress)
   const [bankedBooks, setBankedBooks] = useState<number>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.BANKED_BOOKS);
+    const saved = safeStorage.get(STORAGE_KEYS.BANKED_BOOKS);
     return saved !== null ? parseInt(saved, 10) : 0;
   });
 
   const [buildings, setBuildings] = useState<VillageBuilding[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.BUILDINGS);
-    return saved ? JSON.parse(saved) : INITIAL_VILLAGE_BUILDINGS;
+    const saved = safeStorage.get(STORAGE_KEYS.BUILDINGS);
+    if (!saved) return INITIAL_VILLAGE_BUILDINGS;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return INITIAL_VILLAGE_BUILDINGS;
+    }
   });
 
   const [levelsProgress, setLevelsProgress] = useState<Record<number, LevelProgress>>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.LEVEL_PROGRESS);
-    if (saved) return JSON.parse(saved);
+    const saved = safeStorage.get(STORAGE_KEYS.LEVEL_PROGRESS);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        // fallback
+      }
+    }
     return {
       1: { unlocked: true, stars: 0, highScore: 0, bestTime: null, booksFound: 0, totalBooks: 6 },
       2: { unlocked: false, stars: 0, highScore: 0, bestTime: null, booksFound: 0, totalBooks: 7 },
@@ -76,15 +106,15 @@ export default function App() {
 
   // Sync to LocalStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BANKED_BOOKS, bankedBooks.toString());
+    safeStorage.set(STORAGE_KEYS.BANKED_BOOKS, bankedBooks.toString());
   }, [bankedBooks]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.BUILDINGS, JSON.stringify(buildings));
+    safeStorage.set(STORAGE_KEYS.BUILDINGS, JSON.stringify(buildings));
   }, [buildings]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LEVEL_PROGRESS, JSON.stringify(levelsProgress));
+    safeStorage.set(STORAGE_KEYS.LEVEL_PROGRESS, JSON.stringify(levelsProgress));
   }, [levelsProgress]);
 
   // Construct Village Building Action

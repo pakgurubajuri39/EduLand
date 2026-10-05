@@ -43,11 +43,21 @@ class SoundEngine {
 
   private initCtx() {
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      this.ctx = new AudioCtx();
+      try {
+        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        if (AudioCtx) {
+          this.ctx = new AudioCtx();
+        }
+      } catch (err) {
+        // AudioContext will initialize on first user gesture
+      }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
+      try {
+        this.ctx.resume().catch(() => {});
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -59,7 +69,13 @@ class SoundEngine {
   }
 
   private notify() {
-    this.listeners.forEach((l) => l());
+    this.listeners.forEach((l) => {
+      try {
+        l();
+      } catch {
+        // ignore
+      }
+    });
   }
 
   // --- Volume & Master Controls ---
@@ -67,8 +83,12 @@ class SoundEngine {
   public setVolume(vol: number) {
     this.masterVolume = Math.max(0, Math.min(1, vol));
     if (this.ambientMasterGain && this.ctx) {
-      const target = this.isMuted ? 0 : this.masterVolume;
-      this.ambientMasterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+      try {
+        const target = this.isMuted ? 0 : this.masterVolume;
+        this.ambientMasterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+      } catch {
+        // ignore
+      }
     }
     this.notify();
   }
@@ -80,11 +100,19 @@ class SoundEngine {
   public setMuted(muted: boolean) {
     this.isMuted = muted;
     if (this.ctx && this.ambientMasterGain) {
-      const target = muted ? 0 : this.masterVolume;
-      this.ambientMasterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+      try {
+        const target = muted ? 0 : this.masterVolume;
+        this.ambientMasterGain.gain.setTargetAtTime(target, this.ctx.currentTime, 0.05);
+      } catch {
+        // ignore
+      }
     }
     if (muted && this.gliderGain && this.ctx) {
-      this.gliderGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      try {
+        this.gliderGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      } catch {
+        // ignore
+      }
     }
     this.notify();
   }
@@ -105,58 +133,61 @@ class SoundEngine {
   // --- Ambient Routing & Setup ---
 
   private ensureAmbientSetup() {
-    this.initCtx();
-    const ctx = this.ctx;
-    if (!ctx) return;
+    try {
+      this.initCtx();
+      const ctx = this.ctx;
+      if (!ctx) return;
 
-    if (!this.ambientMasterGain) {
-      this.ambientMasterGain = ctx.createGain();
-      this.ambientMasterGain.gain.setValueAtTime(this.isMuted ? 0 : this.masterVolume, ctx.currentTime);
-      this.ambientMasterGain.connect(ctx.destination);
+      if (!this.ambientMasterGain) {
+        this.ambientMasterGain = ctx.createGain();
+        this.ambientMasterGain.gain.setValueAtTime(this.isMuted ? 0 : this.masterVolume, ctx.currentTime);
+        this.ambientMasterGain.connect(ctx.destination);
 
-      // Village master branch
-      this.villageGain = ctx.createGain();
-      this.villageGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      this.villageGain.connect(this.ambientMasterGain);
+        // Village master branch
+        this.villageGain = ctx.createGain();
+        this.villageGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        this.villageGain.connect(this.ambientMasterGain);
 
-      // Gameplay paper-rustle master branch
-      this.gameplayGain = ctx.createGain();
-      this.gameplayGain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      this.gameplayGain.connect(this.ambientMasterGain);
+        // Gameplay paper-rustle master branch
+        this.gameplayGain = ctx.createGain();
+        this.gameplayGain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        this.gameplayGain.connect(this.ambientMasterGain);
+      }
+    } catch {
+      // AudioContext safe fallback
     }
   }
 
   // --- Transition Controller (Crossfading) ---
 
   public transitionTo(mode: AmbientMode, duration: number = 1.2) {
-    this.ensureAmbientSetup();
-    const ctx = this.ctx;
-    if (!ctx || !this.villageGain || !this.gameplayGain) return;
+    try {
+      this.ensureAmbientSetup();
+      const ctx = this.ctx;
+      if (!ctx || !this.villageGain || !this.gameplayGain) return;
 
-    this.currentMode = mode;
+      this.currentMode = mode;
 
-    const now = ctx.currentTime;
-    const timeConstant = duration * 0.4;
+      const now = ctx.currentTime;
+      const timeConstant = duration * 0.4;
 
-    if (mode === 'VILLAGE') {
-      // Start village loops if not already
-      this.startVillageMusic();
-      // Fade in village, fade out gameplay
-      this.villageGain.gain.setTargetAtTime(0.25, now, timeConstant);
-      this.gameplayGain.gain.setTargetAtTime(0.0001, now, timeConstant);
-    } else if (mode === 'GAMEPLAY') {
-      // Start gameplay rustle soundscape if not already
-      this.startGameplaySoundscape();
-      // Fade in gameplay, fade out village
-      this.villageGain.gain.setTargetAtTime(0.0001, now, timeConstant);
-      this.gameplayGain.gain.setTargetAtTime(0.28, now, timeConstant);
-    } else {
-      // SILENT
-      this.villageGain.gain.setTargetAtTime(0.0001, now, timeConstant);
-      this.gameplayGain.gain.setTargetAtTime(0.0001, now, timeConstant);
+      if (mode === 'VILLAGE') {
+        this.startVillageMusic();
+        this.villageGain.gain.setTargetAtTime(0.25, now, timeConstant);
+        this.gameplayGain.gain.setTargetAtTime(0.0001, now, timeConstant);
+      } else if (mode === 'GAMEPLAY') {
+        this.startGameplaySoundscape();
+        this.villageGain.gain.setTargetAtTime(0.0001, now, timeConstant);
+        this.gameplayGain.gain.setTargetAtTime(0.28, now, timeConstant);
+      } else {
+        this.villageGain.gain.setTargetAtTime(0.0001, now, timeConstant);
+        this.gameplayGain.gain.setTargetAtTime(0.0001, now, timeConstant);
+      }
+
+      this.notify();
+    } catch {
+      // Graceful fallback
     }
-
-    this.notify();
   }
 
   // --- 1. Procedural Lively Village Music Generator ---
