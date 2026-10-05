@@ -1,0 +1,6 @@
+{
+  "name": "EduLand Builder Jump",
+  "description": "Tactile storybook papercraft diorama platformer where you rescue Golden Books, flutter-glide through thermals, unfold pop-up page bridges, and rebuild the Great Skyward Archive.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
